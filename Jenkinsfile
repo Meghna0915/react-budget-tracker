@@ -2,14 +2,12 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
-        AWS_ACCESS_KEY_ID = credentials('aws-access-key')
-        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-key')
         IMAGE_NAME = "palmeghna/react-budget-tracker"
         TERRAFORM_DIR = "./terraform"
     }
 
     stages {
+
         stage('Checkout Code') {
             steps {
                 git branch: 'main', url: 'https://github.com/Meghna0915/react-budget-tracker.git'
@@ -50,11 +48,12 @@ pipeline {
         stage('Terraform Init & Apply') {
             steps {
                 dir("${TERRAFORM_DIR}") {
-                    withEnv(["AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}", "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"]) {
-                        sh """
-                        terraform init
-                        terraform apply -auto-approve -var 'docker_image=${IMAGE_NAME}:latest' -var 'key_name=your-key-pair-name'
-                        """
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
+                        sh '''
+                            terraform init -input=false
+                            terraform plan -out=tfplan -var="docker_image=${IMAGE_NAME}:latest"
+                            terraform apply -auto-approve tfplan
+                        '''
                     }
                 }
             }
@@ -71,10 +70,10 @@ pipeline {
 
     post {
         success {
-            echo '✅ Infrastructure and deployment successful!'
+            echo '✅ Deployment completed successfully!'
         }
         failure {
-            echo '❌ Something went wrong during CI/CD pipeline.'
+            echo '❌ Pipeline failed. Check logs for details.'
         }
     }
 }
