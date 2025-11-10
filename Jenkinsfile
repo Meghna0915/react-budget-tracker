@@ -2,12 +2,14 @@ pipeline {
     agent any
 
     environment {
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
+        AWS_ACCESS_KEY_ID = credentials('aws-access-key')
+        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-key')
         IMAGE_NAME = "palmeghna/react-budget-tracker"
         TERRAFORM_DIR = "./terraform"
     }
 
     stages {
-
         stage('Checkout Code') {
             steps {
                 git branch: 'main', url: 'https://github.com/Meghna0915/react-budget-tracker.git'
@@ -16,20 +18,20 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                sh 'npm install'
+                bat 'npm install'
             }
         }
 
         stage('Build React App') {
             steps {
-                sh 'npm run build'
+                bat 'npm run build'
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 script {
-                    docker.build("${IMAGE_NAME}:${BUILD_NUMBER}")
+                    bat "docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} ."
                 }
             }
         }
@@ -37,10 +39,12 @@ pipeline {
         stage('Push to Docker Hub') {
             steps {
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials') {
-                        docker.image("${IMAGE_NAME}:${BUILD_NUMBER}").push()
-                        docker.image("${IMAGE_NAME}:${BUILD_NUMBER}").push("latest")
-                    }
+                    bat """
+                        docker login -u %DOCKERHUB_CREDENTIALS_USR% -p %DOCKERHUB_CREDENTIALS_PSW%
+                        docker push ${IMAGE_NAME}:${BUILD_NUMBER}
+                        docker tag ${IMAGE_NAME}:${BUILD_NUMBER} ${IMAGE_NAME}:latest
+                        docker push ${IMAGE_NAME}:latest
+                    """
                 }
             }
         }
@@ -48,13 +52,12 @@ pipeline {
         stage('Terraform Init & Apply') {
             steps {
                 dir("${TERRAFORM_DIR}") {
-                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
-                        sh '''
-                            terraform init -input=false
-                            terraform plan -out=tfplan -var="docker_image=${IMAGE_NAME}:latest"
-                            terraform apply -auto-approve tfplan
-                        '''
-                    }
+                    bat """
+                        set AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+                        set AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+                        terraform init
+                        terraform apply -auto-approve -var "docker_image=${IMAGE_NAME}:latest"
+                    """
                 }
             }
         }
@@ -62,25 +65,15 @@ pipeline {
         stage('Output Server Info') {
             steps {
                 dir("${TERRAFORM_DIR}") {
-                    sh 'terraform output'
+                    bat 'terraform output'
                 }
             }
         }
     }
-        stage('Terraform Destroy') {
-    when {
-        expression { params.DESTROY_INFRA == true }
-    }
-    steps {
-        dir("${TERRAFORM_DIR}") {
-            sh 'terraform destroy -auto-approve'
-        }
-    }
-}
 
     post {
         success {
-            echo '✅ Deployment completed successfully!'
+            echo '✅ Pipeline completed successfully!'
         }
         failure {
             echo '❌ Pipeline failed. Check logs for details.'
