@@ -67,6 +67,16 @@ pipeline {
             }
         }
     }
+        stage('Terraform Destroy') {
+    when {
+        expression { params.DESTROY_INFRA == true }
+    }
+    steps {
+        dir("${TERRAFORM_DIR}") {
+            sh 'terraform destroy -auto-approve'
+        }
+    }
+}
 
     post {
         success {

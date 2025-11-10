@@ -45,7 +45,7 @@ resource "aws_instance" "app_server" {
     apt-get install -y docker.io
     systemctl start docker
     systemctl enable docker
-    docker run -d -p 80:80 ${var.docker_image}
+    docker run -d --restart=always -p 80:80 ${var.docker_image}
   EOF
 
   tags = {
