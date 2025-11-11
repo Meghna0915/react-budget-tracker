@@ -23,10 +23,14 @@ pipeline {
         }
 
         stage('Build React App') {
-            steps {
-                bat 'npm run build'
+    steps {
+        bat '''
+        set CI=false
+        npm run build
+        '''
             }
         }
+
 
         stage('Build Docker Image') {
             steps {
